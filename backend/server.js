@@ -16,15 +16,22 @@ require('dotenv').config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Use current directory for database (works better on Railway)
-const DB_PATH = path.join(process.cwd(), 'quotemetric.db');
-const uploadsDir = path.join(process.cwd(), 'uploads');
+// Use root directory for database (Railway writable location)
+const DB_PATH = path.join(__dirname, '..', 'quotemetric.db');
+const uploadsDir = path.join(__dirname, '..', 'uploads');
+
+console.log('📊 Database path:', DB_PATH);
+console.log('📁 Uploads path:', uploadsDir);
+console.log('📁 __dirname:', __dirname);
+console.log('📁 process.cwd():', process.cwd());
 
 // Ensure uploads directory exists
 try {
     if (!fs.existsSync(uploadsDir)) {
         fs.mkdirSync(uploadsDir, { recursive: true });
         console.log('✅ Created uploads directory:', uploadsDir);
+    } else {
+        console.log('✅ Uploads directory already exists');
     }
 } catch (err) {
     console.error('⚠️ Warning: Could not create uploads directory:', err.message);
@@ -36,13 +43,11 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, '../frontend')));
 app.use('/uploads', express.static(uploadsDir));
 
-console.log('📊 Database path:', DB_PATH);
-console.log('📁 Uploads path:', uploadsDir);
-
 // Database connection with error handling
 const db = new sqlite3.Database(DB_PATH, (err) => {
     if (err) {
-        console.error('❌ Database error:', err.message);
+        console.error('❌ Database connection error:', err.message);
+        console.error('Full error:', err);
     } else {
         console.log('✅ Connected to SQLite database');
     }
