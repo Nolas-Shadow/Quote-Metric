@@ -7,7 +7,7 @@
     "start": "node backend/server.js",
     "dev": "nodemon backend/server.js",
     "init-db": "node backend/init-database.js",
-    "postinstall": "node backend/init-database.js"
+    "build": "mkdir -p database uploads || true"
   },
   "engines": {
     "node": ">=18.0.0"

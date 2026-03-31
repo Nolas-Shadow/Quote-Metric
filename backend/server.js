@@ -16,6 +16,12 @@ require('dotenv').config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Ensure required directories exist
+const dbDir = path.join(__dirname, '../database');
+const uploadsDir = path.join(__dirname, '../uploads');
+if (!fs.existsSync(dbDir)) fs.mkdirSync(dbDir, { recursive: true });
+if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+
 // Middleware
 app.use(cors());
 app.use(express.json());
@@ -23,7 +29,7 @@ app.use(express.static(path.join(__dirname, '../frontend')));
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // Database connection
-const DB_PATH = process.env.DATABASE_PATH || './database/quotemetric.db';
+const DB_PATH = process.env.DATABASE_PATH || path.join(__dirname, '../database/quotemetric.db');
 const db = new sqlite3.Database(DB_PATH);
 
 // File upload configuration
@@ -479,21 +485,212 @@ app.get('/api/analytics/dashboard', authenticateToken, (req, res) => {
     });
 });
 
+// ==================== DATABASE INITIALIZATION ====================
+
+// Initialize database tables and default data on startup
+function initializeDatabase() {
+    return new Promise((resolve, reject) => {
+        console.log('📦 Initializing database...');
+        
+        // Create tables
+        const tables = [
+            `CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                email TEXT UNIQUE NOT NULL,
+                password TEXT NOT NULL,
+                first_name TEXT NOT NULL,
+                last_name TEXT NOT NULL,
+                role TEXT NOT NULL CHECK(role IN ('owner', 'manager', 'crew_member')),
+                phone TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                is_active INTEGER DEFAULT 1
+            )`,
+            `CREATE TABLE IF NOT EXISTS customers (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                first_name TEXT NOT NULL,
+                last_name TEXT NOT NULL,
+                email TEXT,
+                phone TEXT NOT NULL,
+                address TEXT,
+                city TEXT,
+                state TEXT,
+                zip TEXT,
+                notes TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                created_by INTEGER,
+                FOREIGN KEY (created_by) REFERENCES users(id)
+            )`,
+            `CREATE TABLE IF NOT EXISTS services (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                description TEXT,
+                base_price REAL NOT NULL,
+                unit TEXT DEFAULT 'job',
+                category TEXT,
+                is_active INTEGER DEFAULT 1
+            )`,
+            `CREATE TABLE IF NOT EXISTS estimates (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                estimate_number TEXT UNIQUE NOT NULL,
+                customer_id INTEGER NOT NULL,
+                status TEXT DEFAULT 'draft',
+                subtotal REAL DEFAULT 0,
+                tax REAL DEFAULT 0,
+                total REAL DEFAULT 0,
+                notes TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                created_by INTEGER,
+                FOREIGN KEY (customer_id) REFERENCES customers(id),
+                FOREIGN KEY (created_by) REFERENCES users(id)
+            )`,
+            `CREATE TABLE IF NOT EXISTS estimate_items (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                estimate_id INTEGER NOT NULL,
+                service_id INTEGER,
+                description TEXT,
+                quantity REAL DEFAULT 1,
+                unit_price REAL,
+                total REAL,
+                FOREIGN KEY (estimate_id) REFERENCES estimates(id),
+                FOREIGN KEY (service_id) REFERENCES services(id)
+            )`,
+            `CREATE TABLE IF NOT EXISTS photos (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                customer_id INTEGER,
+                job_id INTEGER,
+                file_path TEXT NOT NULL,
+                file_name TEXT,
+                uploaded_by INTEGER,
+                ai_analyzed INTEGER DEFAULT 0,
+                ai_suggestions TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (customer_id) REFERENCES customers(id),
+                FOREIGN KEY (uploaded_by) REFERENCES users(id)
+            )`,
+            `CREATE TABLE IF NOT EXISTS ai_upsell_templates (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                detected_object TEXT NOT NULL,
+                suggested_service TEXT NOT NULL,
+                avg_price REAL NOT NULL,
+                confidence_threshold REAL DEFAULT 0.7
+            )`
+        ];
+
+        let completed = 0;
+        tables.forEach((sql, index) => {
+            db.run(sql, (err) => {
+                if (err) {
+                    console.error('Error creating table:', err);
+                    reject(err);
+                    return;
+                }
+                completed++;
+                if (completed === tables.length) {
+                    // Create default admin user
+                    const adminEmail = 'admin@quotemetric.io';
+                    db.get('SELECT id FROM users WHERE email = ?', [adminEmail], (err, user) => {
+                        if (err || !user) {
+                            bcrypt.hash('admin123', 10, (err, hash) => {
+                                if (err) {
+                                    reject(err);
+                                    return;
+                                }
+                                db.run(
+                                    `INSERT INTO users (email, password, first_name, last_name, role, phone) 
+                                     VALUES (?, ?, ?, ?, ?, ?)`,
+                                    [adminEmail, hash, 'Admin', 'User', 'owner', '(248) 202-7636'],
+                                    (err) => {
+                                        if (err) {
+                                            reject(err);
+                                            return;
+                                        }
+                                        console.log('✅ Default admin user created');
+                                        
+                                        // Insert default services
+                                        insertDefaultServices(() => {
+                                            console.log('✅ Database initialization complete');
+                                            resolve();
+                                        });
+                                    }
+                                );
+                            });
+                        } else {
+                            console.log('✅ Admin user already exists');
+                            resolve();
+                        }
+                    });
+                }
+            });
+        });
+    });
+}
+
+function insertDefaultServices(callback) {
+    const services = [
+        ['Deck Cleaning', 'Professional deck cleaning and preparation', 400, 'job', 'Exterior'],
+        ['Deck Sealing', 'High-quality deck sealing and protection', 450, 'job', 'Exterior'],
+        ['Window Cleaning', 'Interior and exterior window cleaning', 200, 'job', 'Windows'],
+        ['Gutter Cleaning', 'Complete gutter cleaning and debris removal', 150, 'job', 'Exterior'],
+        ['Roof Washing', 'Soft wash roof cleaning to remove algae and moss', 450, 'job', 'Roof'],
+        ['Driveway Cleaning', 'Concrete driveway pressure washing', 275, 'job', 'Concrete'],
+        ['Oil Stain Removal', 'Specialized oil stain treatment for driveways', 150, 'job', 'Concrete'],
+        ['Fence Cleaning', 'Vinyl, wood, or aluminum fence cleaning', 200, 'job', 'Exterior'],
+        ['Patio Cleaning', 'Patio and walkway pressure washing', 300, 'job', 'Concrete'],
+        ['Pool Deck Cleaning', 'Pool area and deck cleaning', 350, 'job', 'Concrete'],
+        ['House Washing', 'Complete exterior house soft wash', 350, 'job', 'Exterior'],
+        ['Screen Cleaning', 'Window screen cleaning and treatment', 15, 'each', 'Windows'],
+        ['Chandelier Cleaning', 'Outdoor chandelier cleaning', 75, 'each', 'Lighting'],
+        ['Garage Door Cleaning', 'Front and side garage door cleaning', 50, 'each', 'Exterior'],
+        ['AC Unit Cleaning', 'Air conditioner unit exterior cleaning', 50, 'each', 'Exterior'],
+        ['Trash Bin Cleaning', 'Garbage bin sanitization and cleaning', 25, 'each', 'Cleaning'],
+        ['Solar Panel Cleaning', 'Gentle solar panel cleaning', 20, 'each', 'Solar'],
+        ['Holiday Light Installation', 'Holiday light setup and takedown', 200, 'job', 'Seasonal'],
+        ['Pressure Washing Gift Card', 'Gift card for pressure washing services', 100, 'job', 'Gift Cards'],
+        ['Commercial Pressure Washing', 'Commercial property pressure washing', 500, 'job', 'Commercial']
+    ];
+
+    let completed = 0;
+    services.forEach(([name, description, base_price, unit, category]) => {
+        db.run(
+            `INSERT OR IGNORE INTO services (name, description, base_price, unit, category) VALUES (?, ?, ?, ?, ?)`,
+            [name, description, base_price, unit, category],
+            () => {
+                completed++;
+                if (completed === services.length) {
+                    console.log('✅ Default services inserted');
+                    if (callback) callback();
+                }
+            }
+        );
+    });
+}
+
 // ==================== START SERVER ====================
 
-app.listen(PORT, () => {
-    console.log('');
-    console.log('╔══════════════════════════════════════════════════════════╗');
-    console.log('║                                                          ║');
-    console.log('║           QuoteMetric System Server Started              ║');
-    console.log('║                                                          ║');
-    console.log(`║   🌐 Server running at: http://localhost:${PORT}              ║`);
-    console.log('║   📊 Database: ' + DB_PATH);
-    console.log('║                                                          ║');
-    console.log('║   👤 Default Login:                                      ║');
-    console.log('║      Email: admin@quotemetric.io                         ║');
-    console.log('║      Password: admin123                                  ║');
-    console.log('║                                                          ║');
-    console.log('╚══════════════════════════════════════════════════════════╝');
-    console.log('');
-});
+async function startServer() {
+    try {
+        await initializeDatabase();
+        
+        app.listen(PORT, () => {
+            console.log('');
+            console.log('╔══════════════════════════════════════════════════════════╗');
+            console.log('║                                                          ║');
+            console.log('║           QuoteMetric System Server Started              ║');
+            console.log('║                                                          ║');
+            console.log(`║   🌐 Server running at: http://localhost:${PORT}              ║`);
+            console.log('║   📊 Database: ' + DB_PATH);
+            console.log('║                                                          ║');
+            console.log('║   👤 Default Login:                                      ║');
+            console.log('║      Email: admin@quotemetric.io                         ║');
+            console.log('║      Password: admin123                                  ║');
+            console.log('║                                                          ║');
+            console.log('╚══════════════════════════════════════════════════════════╝');
+            console.log('');
+        });
+    } catch (err) {
+        console.error('Failed to initialize database:', err);
+        process.exit(1);
+    }
+}
+
+startServer();
