@@ -3,8 +3,8 @@ node_modules/
 package-lock.json
 
 # Database
-database/*.db
-database/*.sqlite
+*.db
+*.sqlite
 
 # Environment variables
 .env
@@ -12,25 +12,3 @@ database/*.sqlite
 # Uploads
 uploads/*
 !uploads/.gitkeep
-
-# Logs
-logs/
-*.log
-npm-debug.log*
-
-# OS files
-.DS_Store
-Thumbs.db
-desktop.ini
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-
-# Temporary files
-tmp/
-temp/
-.cache/

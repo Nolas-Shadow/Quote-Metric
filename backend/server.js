@@ -16,21 +16,41 @@ require('dotenv').config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Ensure required directories exist
-const dbDir = path.join(__dirname, '../database');
-const uploadsDir = path.join(__dirname, '../uploads');
-if (!fs.existsSync(dbDir)) fs.mkdirSync(dbDir, { recursive: true });
-if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+// Use current directory for database (works better on Railway)
+const DB_PATH = path.join(process.cwd(), 'quotemetric.db');
+const uploadsDir = path.join(process.cwd(), 'uploads');
+
+// Ensure uploads directory exists
+try {
+    if (!fs.existsSync(uploadsDir)) {
+        fs.mkdirSync(uploadsDir, { recursive: true });
+        console.log('✅ Created uploads directory:', uploadsDir);
+    }
+} catch (err) {
+    console.error('⚠️ Warning: Could not create uploads directory:', err.message);
+}
 
 // Middleware
 app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '../frontend')));
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+app.use('/uploads', express.static(uploadsDir));
 
-// Database connection
-const DB_PATH = process.env.DATABASE_PATH || path.join(__dirname, '../database/quotemetric.db');
-const db = new sqlite3.Database(DB_PATH);
+console.log('📊 Database path:', DB_PATH);
+console.log('📁 Uploads path:', uploadsDir);
+
+// Database connection with error handling
+const db = new sqlite3.Database(DB_PATH, (err) => {
+    if (err) {
+        console.error('❌ Database error:', err.message);
+    } else {
+        console.log('✅ Connected to SQLite database');
+    }
+});
+
+db.on('error', (err) => {
+    console.error('SQLite error:', err.message);
+});
 
 // File upload configuration
 const storage = multer.diskStorage({
@@ -688,9 +708,22 @@ async function startServer() {
             console.log('');
         });
     } catch (err) {
-        console.error('Failed to initialize database:', err);
+        console.error('❌ Failed to initialize database:', err);
+        console.error('Stack trace:', err.stack);
         process.exit(1);
     }
 }
 
 startServer();
+
+// ==================== GLOBAL ERROR HANDLERS ====================
+
+process.on('uncaughtException', (err) => {
+    console.error('❌ UNCAUGHT EXCEPTION:', err.message);
+    console.error('Stack:', err.stack);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('❌ UNHANDLED REJECTION at:', promise);
+    console.error('Reason:', reason);
+});
