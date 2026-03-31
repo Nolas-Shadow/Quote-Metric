@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: quotemetric-system
+    env: node
+    buildCommand: npm install
+    startCommand: node backend/server.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_PATH
+        value: ./quotemetric.db
+      - key: UPLOAD_PATH
+        value: ./uploads
+      - key: JWT_SECRET
+        generateValue: true
+      - key: SESSION_SECRET
+        generateValue: true

@@ -16,22 +16,24 @@ require('dotenv').config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Use root directory for database (Railway writable location)
-const DB_PATH = path.join(__dirname, '..', 'quotemetric.db');
-const uploadsDir = path.join(__dirname, '..', 'uploads');
+// Railway/Render compatible paths - use /tmp on Linux, local on Windows
+const isWindows = process.platform === 'win32';
+const DB_PATH = isWindows 
+    ? path.join(__dirname, '..', 'quotemetric.db')
+    : '/tmp/quotemetric.db';
+const uploadsDir = isWindows
+    ? path.join(__dirname, '..', 'uploads')
+    : '/tmp/uploads';
 
 console.log('📊 Database path:', DB_PATH);
 console.log('📁 Uploads path:', uploadsDir);
-console.log('📁 __dirname:', __dirname);
-console.log('📁 process.cwd():', process.cwd());
+console.log('🖥️ Platform:', process.platform);
 
 // Ensure uploads directory exists
 try {
     if (!fs.existsSync(uploadsDir)) {
         fs.mkdirSync(uploadsDir, { recursive: true });
-        console.log('✅ Created uploads directory:', uploadsDir);
-    } else {
-        console.log('✅ Uploads directory already exists');
+        console.log('✅ Created uploads directory');
     }
 } catch (err) {
     console.error('⚠️ Warning: Could not create uploads directory:', err.message);
@@ -44,12 +46,13 @@ app.use(express.static(path.join(__dirname, '../frontend')));
 app.use('/uploads', express.static(uploadsDir));
 
 // Database connection with error handling
+console.log('📦 Opening database connection...');
 const db = new sqlite3.Database(DB_PATH, (err) => {
     if (err) {
         console.error('❌ Database connection error:', err.message);
-        console.error('Full error:', err);
+        console.error('Full error:', JSON.stringify(err, null, 2));
     } else {
-        console.log('✅ Connected to SQLite database');
+        console.log('✅ Connected to SQLite database at:', DB_PATH);
     }
 });
 
