@@ -29,7 +29,7 @@ console.log('📊 Database path:', DB_PATH);
 console.log('📁 Uploads path:', uploadsDir);
 console.log('🖥️ Platform:', process.platform);
 
-// Ensure uploads directory exists
+// Ensure uploads directory exists FIRST
 try {
     if (!fs.existsSync(uploadsDir)) {
         fs.mkdirSync(uploadsDir, { recursive: true });
@@ -37,6 +37,17 @@ try {
     }
 } catch (err) {
     console.error('⚠️ Warning: Could not create uploads directory:', err.message);
+}
+
+// Ensure database directory exists
+const dbDir = path.dirname(DB_PATH);
+try {
+    if (!fs.existsSync(dbDir)) {
+        fs.mkdirSync(dbDir, { recursive: true });
+        console.log('✅ Created database directory');
+    }
+} catch (err) {
+    console.error('⚠️ Warning: Could not create database directory:', err.message);
 }
 
 // Middleware
@@ -47,13 +58,13 @@ app.use('/uploads', express.static(uploadsDir));
 
 // Database connection with error handling
 console.log('📦 Opening database connection...');
-const db = new sqlite3.Database(DB_PATH, (err) => {
+const db = new sqlite3.Database(DB_PATH, sqlite3.OPEN_READWRITE | sqlite3.OPEN_CREATE, (err) => {
     if (err) {
         console.error('❌ Database connection error:', err.message);
         console.error('Full error:', JSON.stringify(err, null, 2));
-    } else {
-        console.log('✅ Connected to SQLite database at:', DB_PATH);
+        throw err;
     }
+    console.log('✅ Connected to SQLite database at:', DB_PATH);
 });
 
 db.on('error', (err) => {

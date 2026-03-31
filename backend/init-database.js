@@ -6,8 +6,21 @@
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const bcrypt = require('bcryptjs');
+const fs = require('fs');
 
-const DB_PATH = path.join(__dirname, '../database/quotemetric.db');
+// Use /tmp on Linux (Railway/Render), local on Windows
+const isWindows = process.platform === 'win32';
+const DB_PATH = isWindows 
+    ? path.join(__dirname, '../quotemetric.db')
+    : '/tmp/quotemetric.db';
+
+// Ensure directory exists
+const dbDir = path.dirname(DB_PATH);
+if (!fs.existsSync(dbDir)) {
+    fs.mkdirSync(dbDir, { recursive: true });
+}
+
+console.log('📊 Database path:', DB_PATH);
 
 // Create database connection
 const db = new sqlite3.Database(DB_PATH, (err) => {
